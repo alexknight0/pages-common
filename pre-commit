@@ -1,0 +1,27 @@
+#!/bin/sh
+# Shared pre-commit hook for Alex's GitHub Pages sites (see README.md).
+# Writes version.js with VERSION (commit time) and VERSION_FILES (SHA-256 of every app
+# file being committed), so update.js can tell when a device runs a stale copy or a mix of
+# old and new files. App files = tracked top-level .html/.js/.css/.webmanifest/.svg files
+# except version.js. Hashes are of the staged content, so unstaged edits don't count.
+#
+# Each site's tools/pre-commit runs this; .git/hooks/pre-commit links to tools/pre-commit.
+# version.js keeps its form: "export const" if it was a module, plain "const" otherwise.
+cd "$(git rev-parse --show-toplevel)" || exit 1
+v=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+kw="const"
+grep -q "^export const VERSION" version.js 2>/dev/null && kw="export const"
+
+files=""
+for f in $(git ls-files | grep -v / | grep -E '\.(html|js|css|webmanifest|svg)$' | grep -vx 'version.js' | sort); do
+  h=$(git show ":$f" | shasum -a 256 | cut -d' ' -f1)
+  files="$files${files:+, }\"$f\": \"$h\""
+done
+
+cat > version.js <<EOF
+// Set automatically by the pre-commit hook (~/projects/pages-common) on every commit.
+// update.js compares these with the live file on GitHub Pages to show whether an update is available.
+$kw VERSION = "$v";
+$kw VERSION_FILES = {$files};
+EOF
+git add version.js
